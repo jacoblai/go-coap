@@ -16,7 +16,7 @@ func main() {
 		Payload:   []byte("hello, world!"),
 	}
 
-	path := "/some/path"
+	path := "/a"
 	if len(os.Args) > 1 {
 		path = os.Args[1]
 	}
