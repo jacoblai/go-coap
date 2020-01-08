@@ -4,6 +4,7 @@ package coap
 import (
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -13,6 +14,13 @@ const maxPktLen = 1500
 type Handler interface {
 	// Handle the message and optionally return a response message.
 	ServeCOAP(l *net.UDPConn, a *net.UDPAddr, m *Message) *Message
+}
+
+var pool = &sync.Pool{
+	New: func() interface{} {
+		obj := make([]byte, maxPktLen)
+		return obj
+	},
 }
 
 type funcHandler func(l *net.UDPConn, a *net.UDPAddr, m *Message) *Message
@@ -26,9 +34,9 @@ func FuncHandler(f func(l *net.UDPConn, a *net.UDPAddr, m *Message) *Message) Ha
 	return funcHandler(f)
 }
 
-func handlePacket(l *net.UDPConn, data []byte, u *net.UDPAddr, rh Handler) {
-
-	msg, err := ParseMessage(data)
+func handlePacket(l *net.UDPConn, dataLen int, data []byte, u *net.UDPAddr, rh Handler) {
+	defer pool.Put(data)
+	msg, err := ParseMessage(data[:dataLen])
 	if err != nil {
 		log.Printf("Error parsing %v", err)
 		return
@@ -36,7 +44,7 @@ func handlePacket(l *net.UDPConn, data []byte, u *net.UDPAddr, rh Handler) {
 
 	rv := rh.ServeCOAP(l, u, &msg)
 	if rv != nil {
-		Transmit(l, u, *rv)
+		_ = Transmit(l, u, *rv)
 	}
 }
 
@@ -84,7 +92,7 @@ func ListenAndServe(n, addr string, rh Handler) error {
 // Serve processes incoming UDP packets on the given listener, and processes
 // these requests forever (or until the listener is closed).
 func Serve(listener *net.UDPConn, rh Handler) error {
-	buf := make([]byte, maxPktLen)
+	buf := pool.Get().([]byte)
 	for {
 		nr, addr, err := listener.ReadFromUDP(buf)
 		if err != nil {
@@ -94,8 +102,6 @@ func Serve(listener *net.UDPConn, rh Handler) error {
 			}
 			return err
 		}
-		tmp := make([]byte, nr)
-		copy(tmp, buf)
-		go handlePacket(listener, tmp, addr, rh)
+		go handlePacket(listener, nr, buf, addr, rh)
 	}
 }
