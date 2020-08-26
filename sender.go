@@ -3,10 +3,11 @@ package coap
 import (
 	"errors"
 	"log"
-	"sync/atomic"
+	"sync"
 )
 
 type Sender struct {
+	sync.Mutex
 	current int64
 	qmax    int64
 	clients []*Conn
@@ -33,9 +34,13 @@ func NewSender(q int64) (*Sender, error) {
 
 func (r *Sender) Send(req Message) (*Message, error) {
 	if r.current < r.qmax {
-		atomic.AddInt64(&r.current, 1)
+		r.Lock()
+		r.current++
+		r.Unlock()
 	} else {
-		atomic.StoreInt64(&r.current, 0)
+		r.Lock()
+		r.current = 0
+		r.Unlock()
 	}
 	log.Println(r.current)
 	c := r.clients[r.current-1]

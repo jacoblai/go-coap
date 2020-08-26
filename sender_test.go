@@ -18,7 +18,7 @@ func TestSender_Send(t *testing.T) {
 	req.SetOption(ETag, "weetag")
 	req.SetOption(MaxAge, 3)
 	req.SetPathString(path)
-	s, err := NewSender(3)
+	s, err := NewSender(8)
 	if err != nil {
 		t.Error(err)
 	}
