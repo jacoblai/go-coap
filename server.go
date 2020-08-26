@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const maxPktLen = 1500
+const maxPktLen = 65535
 
 // Handler is a type that handles CoAP messages.
 type Handler interface {
