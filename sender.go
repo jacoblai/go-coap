@@ -2,15 +2,13 @@ package coap
 
 import (
 	"errors"
-	"log"
-	"sync"
 	"sync/atomic"
 )
 
 type Sender struct {
 	current int64
 	qmax    int64
-	clients sync.Map
+	clients []*Conn
 }
 
 func NewSender(q int64) (*Sender, error) {
@@ -20,13 +18,14 @@ func NewSender(q int64) (*Sender, error) {
 	re := &Sender{
 		current: 0,
 		qmax:    q,
+		clients: make([]*Conn, 0),
 	}
 	for i := 0; i < int(q); i++ {
 		c, err := Dial("udp", "localhost:5683")
 		if err != nil {
 			return nil, err
 		}
-		re.clients.Store(i, c)
+		re.clients = append(re.clients, c)
 	}
 	return re, nil
 }
@@ -37,12 +36,7 @@ func (r *Sender) Send(req Message) (*Message, error) {
 	if current == max {
 		atomic.StoreInt64(&current, 0)
 	}
-	cc, ok := r.clients.Load(current)
-	if !ok {
-		return nil, errors.New("pool err")
-	}
+	c := r.clients[current]
 	atomic.AddInt64(&current, 1)
-	c := cc.(*Conn)
-	log.Println(current)
 	return c.Send(req)
 }
