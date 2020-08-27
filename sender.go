@@ -4,13 +4,13 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"sync/atomic"
 )
 
 type Sender struct {
-	sync.Mutex
 	current int64
 	qmax    int64
-	clients []*Conn
+	clients sync.Map
 }
 
 func NewSender(q int64) (*Sender, error) {
@@ -20,29 +20,29 @@ func NewSender(q int64) (*Sender, error) {
 	re := &Sender{
 		current: 0,
 		qmax:    q,
-		clients: make([]*Conn, 0),
 	}
 	for i := 0; i < int(q); i++ {
 		c, err := Dial("udp", "localhost:5683")
 		if err != nil {
 			return nil, err
 		}
-		re.clients = append(re.clients, c)
+		re.clients.Store(i, c)
 	}
 	return re, nil
 }
 
 func (r *Sender) Send(req Message) (*Message, error) {
-	if r.current < r.qmax {
-		r.Lock()
-		r.current++
-		r.Unlock()
-	} else {
-		r.Lock()
-		r.current = 0
-		r.Unlock()
+	current := atomic.LoadInt64(&r.current)
+	max := atomic.LoadInt64(&r.qmax)
+	if current == max {
+		atomic.StoreInt64(&current, 0)
 	}
-	log.Println(r.current)
-	c := r.clients[r.current-1]
+	cc, ok := r.clients.Load(current)
+	if !ok {
+		return nil, errors.New("pool err")
+	}
+	atomic.AddInt64(&current, 1)
+	c := cc.(*Conn)
+	log.Println(current)
 	return c.Send(req)
 }
