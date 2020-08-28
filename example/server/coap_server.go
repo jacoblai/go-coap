@@ -1,13 +1,13 @@
 package main
 
 import (
+	"github.com/jacoblai/go-coap"
 	"log"
 	"net"
-	"github.com/jacoblai/go-coap"
 )
 
 func handleA(l *net.UDPConn, a *net.UDPAddr, m *coap.Message) *coap.Message {
-	log.Printf("Got message in handleA: path=%q: %#v from %v", m.Path(), m, a)
+	//log.Printf("Got message in handleA: path=%q: %#v from %v", m.Path(), m, a)
 	if m.IsConfirmable() {
 		res := &coap.Message{
 			Type:      coap.Acknowledgement,
@@ -18,7 +18,7 @@ func handleA(l *net.UDPConn, a *net.UDPAddr, m *coap.Message) *coap.Message {
 		}
 		res.SetOption(coap.ContentFormat, coap.TextPlain)
 
-		log.Printf("Transmitting from A %#v", res)
+		//log.Printf("Transmitting from A %#v", res)
 		return res
 	}
 	return nil
