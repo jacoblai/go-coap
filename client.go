@@ -2,6 +2,7 @@ package coap
 
 import (
 	"net"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,6 +21,7 @@ const (
 type Conn struct {
 	conn *net.UDPConn
 	buf  []byte
+	Busy atomic.Value
 }
 
 // Dial connects a CoAP client.
@@ -34,7 +36,7 @@ func Dial(n, addr string) (*Conn, error) {
 		return nil, err
 	}
 
-	return &Conn{s, make([]byte, maxPktLen)}, nil
+	return &Conn{s, make([]byte, maxPktLen), atomic.Value{}}, nil
 }
 
 // Send a message.  Get a response if there is one.

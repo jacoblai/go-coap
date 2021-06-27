@@ -2,17 +2,20 @@
 package coap
 
 import (
+	"context"
+	"golang.org/x/sys/unix"
 	"log"
 	"net"
+	"runtime"
 	"sync"
+	"syscall"
 	"time"
 )
 
-const maxPktLen = 4 * 1024
+const maxPktLen = 64 * 1024
 
 // Handler is a type that handles CoAP messages.
 type Handler interface {
-	// Handle the message and optionally return a response message.
 	ServeCOAP(l *net.UDPConn, a *net.UDPAddr, m *Message) *Message
 }
 
@@ -60,6 +63,7 @@ func Transmit(l *net.UDPConn, a *net.UDPAddr, m Message) error {
 	} else {
 		_, err = l.WriteTo(d, a)
 	}
+
 	return err
 }
 
@@ -76,17 +80,49 @@ func Receive(l *net.UDPConn, buf []byte) (Message, error) {
 
 // ListenAndServe binds to the given address and serve requests forever.
 func ListenAndServe(n, addr string, rh Handler) error {
-	uaddr, err := net.ResolveUDPAddr(n, addr)
+	_, err := net.ResolveUDPAddr(n, addr)
 	if err != nil {
 		return err
 	}
 
-	l, err := net.ListenUDP(n, uaddr)
-	if err != nil {
-		return err
+	for i := 0; i < runtime.NumCPU()*2; i++ {
+		l, err := newUDPListener(addr)
+		if err != nil {
+			return err
+		}
+		err = Serve(l, rh)
+		if err != nil {
+			return err
+		}
 	}
 
-	return Serve(l, rh)
+	return nil
+}
+
+func newUDPListener(address string) (conn *net.UDPConn, err error) {
+	cfgFn := func(network, address string, conn syscall.RawConn) (err error) {
+		// 构造fd控制函数
+		fn := func(fd uintptr) {
+			// 设置REUSEPORT
+			err = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+			if err != nil {
+				return
+			}
+		}
+
+		if err = conn.Control(fn); err != nil {
+			return
+		}
+		return
+	}
+
+	lc := net.ListenConfig{Control: cfgFn}
+	lp, err := lc.ListenPacket(context.Background(), "udp", address)
+	if err != nil {
+		return
+	}
+	conn = lp.(*net.UDPConn)
+	return
 }
 
 // Serve processes incoming UDP packets on the given listener, and processes

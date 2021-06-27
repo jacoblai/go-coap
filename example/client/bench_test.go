@@ -1,8 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"github.com/jacoblai/go-coap"
+	"runtime"
+	"sync"
 	"testing"
 )
 
@@ -21,21 +22,41 @@ func BenchmarkQps(b *testing.B) {
 	req.SetPathString(path)
 	b.ReportAllocs()
 
-	c, err := coap.Dial("udp", "localhost:5683")
-	if err != nil {
-		b.Error(err)
+	clientPoll := sync.Map{}
+
+	for i := 0; i < runtime.NumCPU()*12; i++ {
+		c, err := coap.Dial("udp", "localhost:5683")
+		if err != nil {
+			b.Error(err)
+		}
+		c.Busy.Store(false)
+		clientPoll.Store(c, nil)
 	}
-	pres := []byte("hello to you!")
+
+	b.ResetTimer()
+	//pres := []byte("hello to you!")
+
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			rv, err := c.Send(req)
-			if err != nil {
-				b.Error(err)
-			}
-
-			if bytes.Compare(rv.Payload, pres) != 0 {
-				b.Error("payload")
-			}
+			clientPoll.Range(func(key, value interface{}) bool {
+				c := key.(*coap.Conn)
+				if c.Busy.Load() == false {
+					c.Busy.Store(true)
+					_, err := c.Send(req)
+					if err != nil {
+						c.Busy.Store(false)
+						b.Error(err)
+					}
+					//if bytes.Compare(rv.Payload, pres) != 0 {
+					//	c.Busy.Store(false)
+					//	b.Error("payload")
+					//}
+					c.Busy.Store(false)
+					return false
+				} else {
+					return true
+				}
+			})
 		}
 	})
 }
